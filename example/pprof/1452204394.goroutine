@@ -1,0 +1,35 @@
+goroutine profile: total 507
+1 @ 0x98788 0x98563 0x93ea4 0x712e6 0x70c55 0x59aa1
+#	0x98788	runtime/pprof.writeRuntimeProfile+0xb8		/usr/local/go/src/runtime/pprof/pprof.go:545
+#	0x98563	runtime/pprof.writeGoroutine+0x93		/usr/local/go/src/runtime/pprof/pprof.go:507
+#	0x93ea4	runtime/pprof.(*Profile).WriteTo+0xd4		/usr/local/go/src/runtime/pprof/pprof.go:236
+#	0x712e6	github.com/i/ppdump.(*Dumper).dump+0x636	/Users/ian/go/src/github.com/i/ppdump/ppdump.go:108
+#	0x70c55	github.com/i/ppdump.(*Dumper).runLoop+0xd5	/Users/ian/go/src/github.com/i/ppdump/ppdump.go:78
+
+1 @ 0x2bf83 0x2c044 0x45fc9 0x21db 0x2bbb0 0x59aa1
+#	0x45fc9	time.Sleep+0xf9		/usr/local/go/src/runtime/time.go:59
+#	0x21db	main.main+0x19b		/Users/ian/go/src/github.com/i/ppdump/example/main.go:26
+#	0x2bbb0	runtime.main+0x2b0	/usr/local/go/src/runtime/proc.go:111
+
+1 @ 0x2bf83 0x2c044 0x2bd88 0x59aa1
+#	0x2bf83	runtime.gopark+0x163		/usr/local/go/src/runtime/proc.go:186
+#	0x2c044	runtime.goparkunlock+0x54	/usr/local/go/src/runtime/proc.go:191
+#	0x2bd88	runtime.forcegchelper+0xb8	/usr/local/go/src/runtime/proc.go:152
+
+1 @ 0x2bf83 0x2c044 0x1d281 0x59aa1
+#	0x2bf83	runtime.gopark+0x163		/usr/local/go/src/runtime/proc.go:186
+#	0x2c044	runtime.goparkunlock+0x54	/usr/local/go/src/runtime/proc.go:191
+#	0x1d281	runtime.bgsweep+0xb1		/usr/local/go/src/runtime/mgcsweep.go:51
+
+1 @ 0x2bf83 0x2c044 0x14fca 0x59aa1
+#	0x2bf83	runtime.gopark+0x163		/usr/local/go/src/runtime/proc.go:186
+#	0x2c044	runtime.goparkunlock+0x54	/usr/local/go/src/runtime/proc.go:191
+#	0x14fca	runtime.runfinq+0xaa		/usr/local/go/src/runtime/mfinal.go:154
+
+501 @ 0x2bf83 0x2c044 0x45fc9 0x59aa1
+#	0x45fc9	time.Sleep+0xf9	/usr/local/go/src/runtime/time.go:59
+
+1 @ 0xe7b6 0x4662e 0x59aa1
+#	0xe7b6	runtime.notetsleepg+0x86	/usr/local/go/src/runtime/lock_sema.go:265
+#	0x4662e	runtime.timerproc+0xde		/usr/local/go/src/runtime/time.go:209
+
