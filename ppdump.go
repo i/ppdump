@@ -71,9 +71,10 @@ func (d *Dumper) Start() {
 }
 
 func (d *Dumper) runLoop() {
+	t := time.NewTicker(d.interval)
 	for {
 		select {
-		case <-time.Tick(d.interval):
+		case <-t.C:
 			if d.thresholdExceeded() {
 				d.dump()
 			}
