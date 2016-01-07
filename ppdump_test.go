@@ -13,7 +13,7 @@ func TestNewA(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	a := NewA(NewAOpts{
+	d := NewDumper(Config{
 		Interval:  time.Second,
 		HardLimit: 500,
 		Path:      "./",
@@ -22,10 +22,10 @@ func TestNewA(t *testing.T) {
 		},
 	})
 
-	a.Start()
+	d.Start()
 	doSomething()
 	time.Sleep(time.Second * 5)
-	a.Stop()
+	d.Stop()
 }
 
 func doSomething() {

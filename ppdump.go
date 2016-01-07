@@ -15,10 +15,10 @@ const (
 	DefaultInterval   = time.Second
 )
 
-var std *A
+var std *Dumper
 
-func Start(opts NewAOpts) {
-	std = NewA(opts)
+func Start(c Config) {
+	std = NewDumper(c)
 	std.Start()
 }
 
@@ -28,7 +28,7 @@ func Stop() {
 	}
 }
 
-type A struct {
+type Dumper struct {
 	Interval   time.Duration
 	BufferSize int
 	HardLimit  int
@@ -41,7 +41,7 @@ type A struct {
 	stop chan struct{}
 }
 
-type NewAOpts struct {
+type Config struct {
 	// how often to poll for goroutines
 	Interval   time.Duration
 	BufferSize int //
@@ -50,54 +50,54 @@ type NewAOpts struct {
 	Profiles   map[string]int
 }
 
-func NewA(opts NewAOpts) *A {
-	return &A{
-		Interval:   opts.Interval,
-		BufferSize: opts.BufferSize,
-		HardLimit:  opts.HardLimit,
-		Path:       opts.Path,
-		Profiles:   opts.Profiles,
+func NewDumper(c Config) *Dumper {
+	return &Dumper{
+		Interval:   c.Interval,
+		BufferSize: c.BufferSize,
+		HardLimit:  c.HardLimit,
+		Path:       c.Path,
+		Profiles:   c.Profiles,
 	}
 }
 
-func (a *A) Start() {
-	a.Lock()
-	defer a.Unlock()
+func (d *Dumper) Start() {
+	d.Lock()
+	defer d.Unlock()
 
-	a.stop = make(chan struct{})
+	d.stop = make(chan struct{})
 
-	if a.Interval == 0 {
-		a.Interval = DefaultInterval
+	if d.Interval == 0 {
+		d.Interval = DefaultInterval
 	}
-	go a.runLoop()
+	go d.runLoop()
 }
 
-func (a *A) runLoop() {
+func (d *Dumper) runLoop() {
 	for {
 		select {
-		case <-time.Tick(a.Interval):
-			if a.thresholdExceeded() {
-				a.dump()
+		case <-time.Tick(d.Interval):
+			if d.thresholdExceeded() {
+				d.dump()
 			}
-		case <-a.stop:
+		case <-d.stop:
 			return
 		}
 	}
 }
 
-func (a *A) dump() {
-	a.Lock()
-	defer a.Unlock()
+func (d *Dumper) dump() {
+	d.Lock()
+	defer d.Unlock()
 
 	now := time.Now().Unix()
-	for profile, debug := range a.Profiles {
+	for profile, debug := range d.Profiles {
 		p := pprof.Lookup(profile)
 		if p == nil {
 			continue
 		}
 
 		fname := fmt.Sprintf("%d-%s", now, profile)
-		f, err := os.Create(path.Join(a.Path, fname))
+		f, err := os.Create(path.Join(d.Path, fname))
 		if err != nil {
 			continue
 		}
@@ -107,15 +107,15 @@ func (a *A) dump() {
 }
 
 // Stops the runloop. No-op if called more than once.
-func (a *A) Stop() {
-	a.Lock()
-	defer a.Unlock()
+func (d *Dumper) Stop() {
+	d.Lock()
+	defer d.Unlock()
 	defer func() { recover() }() // doesn't matter if the channel is closed twice
-	close(a.stop)
+	close(d.stop)
 }
 
-func (a *A) thresholdExceeded() bool {
-	return runtime.NumGoroutine() >= a.HardLimit
+func (d *Dumper) thresholdExceeded() bool {
+	return runtime.NumGoroutine() >= d.HardLimit
 }
 
 // type to buffer previous results
