@@ -17,6 +17,15 @@ const (
 
 var std *Dumper
 
+type Config struct {
+	Interval  time.Duration  // how often to poll for goroutines
+	Throttle  time.Duration  // time to wait before writing another dump
+	HardLimit int            // number of goroutines to trigger a dump
+	Path      string         // path to write profiles to
+	Profiles  map[string]int // map of profile names to debug level
+}
+
+// Start begins the
 func Start(c Config) {
 	std = NewDumper(c)
 	std.Start()
@@ -29,34 +38,23 @@ func Stop() {
 }
 
 type Dumper struct {
-	Interval   time.Duration
-	BufferSize int
-	HardLimit  int
-	Path       string
-	Debug      int
-	Profiles   map[string]int
-
-	buf buffer
 	sync.Mutex
-	stop chan struct{}
-}
-
-type Config struct {
-	// how often to poll for goroutines
-	Interval   time.Duration
-	BufferSize int //
-	HardLimit  int
-	Path       string
-	Profiles   map[string]int
+	interval  time.Duration
+	throttle  time.Duration
+	hardLimit int
+	path      string
+	profiles  map[string]int
+	stop      chan struct{}
+	lastDump  time.Time
 }
 
 func NewDumper(c Config) *Dumper {
 	return &Dumper{
-		Interval:   c.Interval,
-		BufferSize: c.BufferSize,
-		HardLimit:  c.HardLimit,
-		Path:       c.Path,
-		Profiles:   c.Profiles,
+		interval:  c.Interval,
+		throttle:  c.Throttle,
+		hardLimit: c.HardLimit,
+		path:      c.Path,
+		profiles:  c.Profiles,
 	}
 }
 
@@ -66,8 +64,8 @@ func (d *Dumper) Start() {
 
 	d.stop = make(chan struct{})
 
-	if d.Interval == 0 {
-		d.Interval = DefaultInterval
+	if d.interval == 0 {
+		d.interval = DefaultInterval
 	}
 	go d.runLoop()
 }
@@ -75,7 +73,7 @@ func (d *Dumper) Start() {
 func (d *Dumper) runLoop() {
 	for {
 		select {
-		case <-time.Tick(d.Interval):
+		case <-time.Tick(d.interval):
 			if d.thresholdExceeded() {
 				d.dump()
 			}
@@ -89,15 +87,20 @@ func (d *Dumper) dump() {
 	d.Lock()
 	defer d.Unlock()
 
-	now := time.Now().Unix()
-	for profile, debug := range d.Profiles {
+	now := time.Now()
+	if now.Before(d.lastDump.Add(d.throttle)) {
+		return
+	}
+	d.lastDump = now
+
+	for profile, debug := range d.profiles {
 		p := pprof.Lookup(profile)
 		if p == nil {
 			continue
 		}
 
-		fname := fmt.Sprintf("%d-%s", now, profile)
-		f, err := os.Create(path.Join(d.Path, fname))
+		fname := fmt.Sprintf("%d.%s", now.Unix(), profile)
+		f, err := os.Create(path.Join(d.path, fname))
 		if err != nil {
 			continue
 		}
@@ -115,7 +118,7 @@ func (d *Dumper) Stop() {
 }
 
 func (d *Dumper) thresholdExceeded() bool {
-	return runtime.NumGoroutine() >= d.HardLimit
+	return runtime.NumGoroutine() >= d.hardLimit
 }
 
 // type to buffer previous results
