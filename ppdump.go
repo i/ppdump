@@ -26,9 +26,14 @@ type Config struct {
 }
 
 // Start begins the
-func Start(c Config) {
-	std = NewDumper(c)
+func Start(c Config) error {
+	var err error
+	std, err = NewDumper(c)
+	if err != nil {
+		return err
+	}
 	std.Start()
+	return nil
 }
 
 func Stop() {
@@ -48,14 +53,18 @@ type Dumper struct {
 	lastDump  time.Time
 }
 
-func NewDumper(c Config) *Dumper {
+func NewDumper(c Config) (*Dumper, error) {
+	if err := os.Mkdir(c.Path, 0755); err != nil && !os.IsExist(err) {
+		return nil, err
+	}
+
 	return &Dumper{
 		interval:  c.Interval,
 		throttle:  c.Throttle,
 		hardLimit: c.HardLimit,
 		path:      c.Path,
 		profiles:  c.Profiles,
-	}
+	}, nil
 }
 
 func (d *Dumper) Start() {

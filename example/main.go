@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"time"
 
 	"github.com/i/ppdump"
@@ -8,7 +9,7 @@ import (
 
 func main() {
 	// use the default ppdump client
-	ppdump.Start(ppdump.Config{
+	err := ppdump.Start(ppdump.Config{
 		Interval:  time.Second / 4,
 		HardLimit: 500, // trigger a dump when there are more than 500 goroutines
 		Path:      "./pprof",
@@ -16,6 +17,9 @@ func main() {
 			"goroutine": 1, // dump the goroutine profile with debug level 1
 		},
 	})
+	if err != nil {
+		log.Fatal(err)
+	}
 	defer ppdump.Stop()
 
 	// trigger a dump
