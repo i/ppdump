@@ -18,11 +18,12 @@ const (
 var std *Dumper
 
 type Config struct {
-	Interval  time.Duration  // how often to poll for goroutines
-	Throttle  time.Duration  // time to wait before writing another dump
-	HardLimit int            // number of goroutines to trigger a dump
-	Path      string         // path to write profiles to
-	Profiles  map[string]int // map of profile names to debug level
+	Interval     time.Duration  // how often to poll for goroutines
+	Throttle     time.Duration  // time to wait before writing another dump
+	HardLimit    int            // number of goroutines to trigger a dump
+	ThresholdPct float64        // percentage of increase to trigger a dump
+	Path         string         // path to write profiles to
+	Profiles     map[string]int // map of profile names to debug level
 }
 
 // Start begins the
@@ -44,13 +45,17 @@ func Stop() {
 
 type Dumper struct {
 	sync.Mutex
-	interval  time.Duration
-	throttle  time.Duration
-	hardLimit int
-	path      string
-	profiles  map[string]int
-	stop      chan struct{}
-	lastDump  time.Time
+
+	interval time.Duration
+	throttle time.Duration
+	lim      int
+	thr      float64
+	avg      float64
+	nv       int64
+	path     string
+	profiles map[string]int
+	stop     chan struct{}
+	lastDump time.Time
 }
 
 func NewDumper(c Config) (*Dumper, error) {
@@ -59,11 +64,12 @@ func NewDumper(c Config) (*Dumper, error) {
 	}
 
 	return &Dumper{
-		interval:  c.Interval,
-		throttle:  c.Throttle,
-		hardLimit: c.HardLimit,
-		path:      c.Path,
-		profiles:  c.Profiles,
+		interval: c.Interval,
+		throttle: c.Throttle,
+		lim:      c.HardLimit,
+		thr:      c.ThresholdPct,
+		path:     c.Path,
+		profiles: c.Profiles,
 	}, nil
 }
 
@@ -128,24 +134,14 @@ func (d *Dumper) Stop() {
 }
 
 func (d *Dumper) thresholdExceeded() bool {
-	return runtime.NumGoroutine() >= d.hardLimit
+	n := runtime.NumGoroutine()
+	oldAvg := d.avg
+	newAvg := d.updateAvg(n)
+	return runtime.NumGoroutine() >= d.lim || newAvg/oldAvg > d.thr
 }
 
-// type to buffer previous results
-type buffer []int
-
-func (b *buffer) push(n int) {
-	*b = append(*b, n)
-}
-
-func (b *buffer) shift(n int) {
-	*b = (*b)[:len(*b)-1]
-}
-
-func (b *buffer) insert(n int) {
-	if len(*b) < cap(*b) {
-		b.push(n)
-	} else {
-		b.shift(n)
-	}
+func (d *Dumper) updateAvg(n int) float64 {
+	d.avg = (float64(n)+(d.avg*float64(d.nv)))/float64(d.nv) + 1
+	d.nv++
+	return d.avg
 }
