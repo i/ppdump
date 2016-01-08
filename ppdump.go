@@ -137,7 +137,7 @@ func (d *Dumper) thresholdExceeded() bool {
 	n := runtime.NumGoroutine()
 	oldAvg := d.avg
 	defer d.updateAvg(n)
-	return runtime.NumGoroutine() >= d.lim || (d.thr != 0 && float64(n)/oldAvg > d.thr)
+	return (d.lim != 0 && runtime.NumGoroutine() >= d.lim) || (d.thr != 0 && float64(n)/oldAvg > d.thr)
 }
 
 func (d *Dumper) updateAvg(n int) float64 {
