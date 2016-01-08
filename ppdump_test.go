@@ -13,7 +13,7 @@ func TestNewA(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	d := NewDumper(Config{
+	d, err := NewDumper(Config{
 		Interval:  time.Second,
 		HardLimit: 500,
 		Path:      "./",
@@ -21,6 +21,7 @@ func TestNewA(t *testing.T) {
 			"goroutine": 2,
 		},
 	})
+	require.NoError(t, err)
 
 	d.Start()
 	doSomething()
