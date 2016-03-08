@@ -2,12 +2,13 @@ package ppdump
 
 import (
 	"fmt"
-	"os"
-	"path"
+	"io"
 	"runtime"
 	"runtime/pprof"
 	"sync"
 	"time"
+
+	"gopkg.in/validator.v2"
 )
 
 const (
@@ -18,12 +19,12 @@ const (
 var std *Dumper
 
 type Config struct {
-	Interval     time.Duration  // how often to poll for goroutines
+	Interval     time.Duration  `validate:"nonzero"` // how often to poll for goroutines
+	Profiles     map[string]int `validate:"nonzero"` // map of profile names to debug level
+	Writer       io.Writer      // where to write the dump to
 	Throttle     time.Duration  // time to wait before writing another dump
 	HardLimit    int            // number of goroutines to trigger a dump
 	ThresholdPct float64        // percentage of increase to trigger a dump
-	Path         string         // path to write profiles to
-	Profiles     map[string]int // map of profile names to debug level
 }
 
 // Start begins the
@@ -52,14 +53,17 @@ type Dumper struct {
 	thr      float64
 	avg      float64
 	nv       int64
-	path     string
+	writer   io.Writer
 	profiles map[string]int
 	stop     chan struct{}
 	lastDump time.Time
 }
 
 func NewDumper(c Config) (*Dumper, error) {
-	if err := os.Mkdir(c.Path, 0755); err != nil && !os.IsExist(err) {
+	if c.Writer == nil {
+		return nil, fmt.Errorf("no writer")
+	}
+	if err := validator.Validate(c); err != nil {
 		return nil, err
 	}
 
@@ -68,8 +72,8 @@ func NewDumper(c Config) (*Dumper, error) {
 		throttle: c.Throttle,
 		lim:      c.HardLimit,
 		thr:      c.ThresholdPct,
-		path:     c.Path,
 		profiles: c.Profiles,
+		writer:   c.Writer,
 	}, nil
 }
 
@@ -115,13 +119,7 @@ func (d *Dumper) dump() {
 			continue
 		}
 
-		fname := fmt.Sprintf("%d.%s", now.Unix(), profile)
-		f, err := os.Create(path.Join(d.path, fname))
-		if err != nil {
-			continue
-		}
-		defer f.Close()
-		p.WriteTo(f, debug)
+		p.WriteTo(d.writer, debug)
 	}
 }
 

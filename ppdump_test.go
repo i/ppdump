@@ -16,7 +16,7 @@ func TestNewA(t *testing.T) {
 	d, err := NewDumper(Config{
 		Interval:  time.Second,
 		HardLimit: 500,
-		Path:      "./",
+		Writer:    os.Stdout,
 		Profiles: map[string]int{
 			"goroutine": 2,
 		},
