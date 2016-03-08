@@ -3,7 +3,6 @@ package ppdump
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"runtime/pprof"
 	"sync"
 	"time"
@@ -21,7 +20,7 @@ var std *Dumper
 type Config struct {
 	Interval     time.Duration      `validate:"nonzero"` // how often to poll for goroutines
 	Profiles     map[string]Profile // list of profiles to track
-	Writer       io.Writer          // where to write the dump to
+	Writer       Writer             // where to write the dump to
 	Throttle     time.Duration      // time to wait before writing another dump
 	ThresholdPct float64            // percentage of increase to trigger a dump
 }
@@ -29,6 +28,10 @@ type Config struct {
 type Profile struct {
 	Threshold int
 	Debug     int
+}
+
+type Writer interface {
+	Write(profile string, threshold int, dump []byte)
 }
 
 // Start begins the
@@ -57,7 +60,7 @@ type Dumper struct {
 	thr       float64
 	avg       float64
 	nv        int64
-	writer    io.Writer
+	writer    Writer
 	profiles  map[string]Profile
 	stop      chan struct{}
 	lastDumps map[string]time.Time
@@ -105,21 +108,20 @@ func (d *Dumper) runLoop() {
 	}
 }
 
-func (d *Dumper) dump(p *pprof.Profile, debug int) {
+func (d *Dumper) dump(p Profile, pp *pprof.Profile) {
 	d.Lock()
 	defer d.Unlock()
 
 	now := time.Now()
-	lastDump := d.lastDumps[p.Name()]
+	lastDump := d.lastDumps[pp.Name()]
 	if now.Before(lastDump.Add(d.throttle)) {
 		return
 	}
-	d.lastDumps[p.Name()] = now
+	d.lastDumps[pp.Name()] = now
 
 	buf := bytes.NewBuffer(nil)
-	buf.Write(nil)
-	p.WriteTo(buf, debug)
-	d.writer.Write(buf.Bytes())
+	pp.WriteTo(buf, p.Debug)
+	d.writer.Write(pp.Name(), p.Threshold, buf.Bytes())
 }
 
 // Stops the runloop. No-op if called more than once.
@@ -134,7 +136,7 @@ func (d *Dumper) checkAndDump() {
 	for name, p := range d.profiles {
 		if profile := pprof.Lookup(name); profile != nil {
 			if profile.Count() > p.Threshold {
-				d.dump(profile, p.Debug)
+				d.dump(p, profile)
 			}
 		}
 	}
