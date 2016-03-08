@@ -14,11 +14,13 @@ func TestNewA(t *testing.T) {
 	defer f.Close()
 
 	d, err := NewDumper(Config{
-		Interval:  time.Second,
-		HardLimit: 500,
-		Writer:    os.Stdout,
-		Profiles: map[string]int{
-			"goroutine": 2,
+		Interval: time.Second,
+		Writer:   os.Stdout,
+		Profiles: map[string]Profile{
+			"goroutine": {
+				Threshold: 500,
+				Debug:     2,
+			},
 		},
 	})
 	require.NoError(t, err)

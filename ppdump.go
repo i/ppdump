@@ -1,9 +1,9 @@
 package ppdump
 
 import (
+	"bytes"
 	"fmt"
 	"io"
-	"runtime"
 	"runtime/pprof"
 	"sync"
 	"time"
@@ -19,12 +19,16 @@ const (
 var std *Dumper
 
 type Config struct {
-	Interval     time.Duration  `validate:"nonzero"` // how often to poll for goroutines
-	Profiles     map[string]int `validate:"nonzero"` // map of profile names to debug level
-	Writer       io.Writer      // where to write the dump to
-	Throttle     time.Duration  // time to wait before writing another dump
-	HardLimit    int            // number of goroutines to trigger a dump
-	ThresholdPct float64        // percentage of increase to trigger a dump
+	Interval     time.Duration      `validate:"nonzero"` // how often to poll for goroutines
+	Profiles     map[string]Profile // list of profiles to track
+	Writer       io.Writer          // where to write the dump to
+	Throttle     time.Duration      // time to wait before writing another dump
+	ThresholdPct float64            // percentage of increase to trigger a dump
+}
+
+type Profile struct {
+	Threshold int
+	Debug     int
 }
 
 // Start begins the
@@ -47,16 +51,16 @@ func Stop() {
 type Dumper struct {
 	sync.Mutex
 
-	interval time.Duration
-	throttle time.Duration
-	lim      int
-	thr      float64
-	avg      float64
-	nv       int64
-	writer   io.Writer
-	profiles map[string]int
-	stop     chan struct{}
-	lastDump time.Time
+	interval  time.Duration
+	throttle  time.Duration
+	lim       int
+	thr       float64
+	avg       float64
+	nv        int64
+	writer    io.Writer
+	profiles  map[string]Profile
+	stop      chan struct{}
+	lastDumps map[string]time.Time
 }
 
 func NewDumper(c Config) (*Dumper, error) {
@@ -68,12 +72,12 @@ func NewDumper(c Config) (*Dumper, error) {
 	}
 
 	return &Dumper{
-		interval: c.Interval,
-		throttle: c.Throttle,
-		lim:      c.HardLimit,
-		thr:      c.ThresholdPct,
-		profiles: c.Profiles,
-		writer:   c.Writer,
+		interval:  c.Interval,
+		throttle:  c.Throttle,
+		thr:       c.ThresholdPct,
+		profiles:  c.Profiles,
+		writer:    c.Writer,
+		lastDumps: make(map[string]time.Time),
 	}, nil
 }
 
@@ -94,33 +98,28 @@ func (d *Dumper) runLoop() {
 	for {
 		select {
 		case <-t.C:
-			if d.thresholdExceeded() {
-				d.dump()
-			}
+			d.checkAndDump()
 		case <-d.stop:
 			return
 		}
 	}
 }
 
-func (d *Dumper) dump() {
+func (d *Dumper) dump(p *pprof.Profile, debug int) {
 	d.Lock()
 	defer d.Unlock()
 
 	now := time.Now()
-	if now.Before(d.lastDump.Add(d.throttle)) {
+	lastDump := d.lastDumps[p.Name()]
+	if now.Before(lastDump.Add(d.throttle)) {
 		return
 	}
-	d.lastDump = now
+	d.lastDumps[p.Name()] = now
 
-	for profile, debug := range d.profiles {
-		p := pprof.Lookup(profile)
-		if p == nil {
-			continue
-		}
-
-		p.WriteTo(d.writer, debug)
-	}
+	buf := bytes.NewBuffer(nil)
+	buf.Write(nil)
+	p.WriteTo(buf, debug)
+	d.writer.Write(buf.Bytes())
 }
 
 // Stops the runloop. No-op if called more than once.
@@ -131,15 +130,12 @@ func (d *Dumper) Stop() {
 	close(d.stop)
 }
 
-func (d *Dumper) thresholdExceeded() bool {
-	n := runtime.NumGoroutine()
-	oldAvg := d.avg
-	defer d.updateAvg(n)
-	return (d.lim != 0 && runtime.NumGoroutine() >= d.lim) || (d.thr != 0 && float64(n)/oldAvg > d.thr)
-}
-
-func (d *Dumper) updateAvg(n int) float64 {
-	d.avg = (float64(n)+(d.avg*float64(d.nv)))/float64(d.nv) + 1
-	d.nv++
-	return d.avg
+func (d *Dumper) checkAndDump() {
+	for name, p := range d.profiles {
+		if profile := pprof.Lookup(name); profile != nil {
+			if profile.Count() > p.Threshold {
+				d.dump(profile, p.Debug)
+			}
+		}
+	}
 }
