@@ -1,56 +1,51 @@
 package ppdump
 
 import (
-	"bytes"
-	"fmt"
 	"runtime/pprof"
 	"sync"
 	"time"
-
-	"gopkg.in/validator.v2"
 )
 
 const (
-	DefaultBufferSize = 1000
-	DefaultInterval   = time.Second
+	_defaultInterval = time.Second
+	_defaultThrottle = time.Minute
 )
 
 var std *Dumper
 
+// Config contains information required for creating a new Dumper.
 type Config struct {
-	Interval     time.Duration      `validate:"nonzero"` // how often to poll for goroutines
-	Profiles     map[string]Profile // list of profiles to track
-	Writer       Writer             // where to write the dump to
-	Throttle     time.Duration      // time to wait before writing another dump
-	ThresholdPct float64            // percentage of increase to trigger a dump
+	Profiles     map[string]ProfileOpts // map of profile names to properties
+	PollInterval time.Duration          // how often to poll for goroutines. defaults to one second
+	Throttle     time.Duration          // time to wait before writing another dump. defaults to one minute
 }
 
-type Profile struct {
+// An ActionFunc is a function that will be called when a profile's threshold
+// has been exceeded.
+type ActionFunc func(profile *pprof.Profile)
+
+// ProfileOpts establishes behavior of when to trigger a dump and what to do
+// when that occurs.
+type ProfileOpts struct {
+	Action    ActionFunc
 	Threshold int
-	Debug     int
 }
 
-type Writer interface {
-	Write(profile string, threshold int, dump []byte)
-}
-
-// Start begins the
-func Start(c Config) error {
-	var err error
-	std, err = NewDumper(c)
-	if err != nil {
-		return err
-	}
+// Start begins the profiling and dumping procedure using the top level dumper.
+func Start(c Config) {
+	std = New(c)
 	std.Start()
-	return nil
 }
 
+// Stop stops the profiling and dumping procedure
 func Stop() {
 	if std != nil {
 		std.Stop()
 	}
 }
 
+// A Dumper dumps.
+// TODO actually describe what it does
 type Dumper struct {
 	sync.Mutex
 
@@ -60,39 +55,34 @@ type Dumper struct {
 	thr       float64
 	avg       float64
 	nv        int64
-	writer    Writer
-	profiles  map[string]Profile
+	profiles  map[string]ProfileOpts
 	stop      chan struct{}
 	lastDumps map[string]time.Time
 }
 
-func NewDumper(c Config) (*Dumper, error) {
-	if c.Writer == nil {
-		return nil, fmt.Errorf("no writer")
+// New returns a new Dumper
+func New(c Config) *Dumper {
+	if c.PollInterval == 0 {
+		c.PollInterval = _defaultInterval
 	}
-	if err := validator.Validate(c); err != nil {
-		return nil, err
+	if c.Throttle == 0 {
+		c.Throttle = _defaultThrottle
 	}
-
 	return &Dumper{
-		interval:  c.Interval,
+		interval:  c.PollInterval,
 		throttle:  c.Throttle,
-		thr:       c.ThresholdPct,
 		profiles:  c.Profiles,
-		writer:    c.Writer,
 		lastDumps: make(map[string]time.Time),
-	}, nil
+	}
 }
 
+// Start starts the routine of dumping.
 func (d *Dumper) Start() {
 	d.Lock()
 	defer d.Unlock()
 
 	d.stop = make(chan struct{})
 
-	if d.interval == 0 {
-		d.interval = DefaultInterval
-	}
 	go d.runLoop()
 }
 
@@ -108,7 +98,7 @@ func (d *Dumper) runLoop() {
 	}
 }
 
-func (d *Dumper) dump(p Profile, pp *pprof.Profile) {
+func (d *Dumper) dump(p ProfileOpts, pp *pprof.Profile) {
 	d.Lock()
 	defer d.Unlock()
 
@@ -118,13 +108,12 @@ func (d *Dumper) dump(p Profile, pp *pprof.Profile) {
 		return
 	}
 	d.lastDumps[pp.Name()] = now
-
-	buf := bytes.NewBuffer(nil)
-	pp.WriteTo(buf, p.Debug)
-	d.writer.Write(pp.Name(), p.Threshold, buf.Bytes())
+	if p.Action != nil {
+		p.Action(pp)
+	}
 }
 
-// Stops the runloop. No-op if called more than once.
+// Stop stops the runloop. No-op if called more than once.
 func (d *Dumper) Stop() {
 	d.Lock()
 	defer d.Unlock()

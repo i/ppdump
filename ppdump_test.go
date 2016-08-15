@@ -2,6 +2,7 @@ package ppdump
 
 import (
 	"os"
+	"runtime/pprof"
 	"testing"
 	"time"
 
@@ -13,13 +14,13 @@ func TestNewA(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	d, err := NewDumper(Config{
-		Interval: time.Second,
-		Writer:   os.Stdout,
-		Profiles: map[string]Profile{
+	d := New(Config{
+		PollInterval: time.Second,
+		Profiles: map[string]ProfileOpts{
 			"goroutine": {
 				Threshold: 500,
-				Debug:     2,
+				Action: func(p *pprof.Profile) {
+				},
 			},
 		},
 	})
