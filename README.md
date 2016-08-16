@@ -21,16 +21,16 @@ import (
 )
 
 func main() {
-  // use the default ppdump client
-  ppdump.Start(ppdump.Config{
-		Interval:  time.Second / 4,
-		HardLimit: 500,   // trigger a dump when there are more than 500 goroutines
-		Path:      "./",
-		Profiles: map[string]int{
-			"goroutine": 2, // dump the goroutine profile with debug level 2
+	ppdump.Start(ppdump.Config{
+		PollInterval: time.Second,
+		Throttle:     time.Minute,
+		Profiles: map[string]ppdump.ProfileOpts{
+			"goroutine": {
+				Threshold: 10000,
+				Action:    dumpToDisk,
+			},
 		},
-  })
-  defer ppdump.Stop()
+	})
 
   // trigger a dump
   for i := 0; i < 501; i++ {
@@ -38,6 +38,17 @@ func main() {
   }
 
   time.Sleep(time.Second) // give ppdump some time to check goroutines
+}
+
+func dumpToDisk(p *pprof.Profile) {
+    f, err := os.Create(fmt.Sprintf("%s-%d.dump", p.Name(), time.Unix()))
+    if err != nil {
+        // handle err
+    }
+    defer f.Close()
+    if _, err := p.WriteTo(f, 0); err != nil {
+        // handle err
+    }
 }
 
 ```
